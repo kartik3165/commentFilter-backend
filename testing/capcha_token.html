@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>reCAPTCHA v3 Test</title>
+  <!-- Google reCAPTCHA v3 script with TEST site key -->
+  <script src="https://www.google.com/recaptcha/api.js?render=6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"></script>
+</head>
+<body>
+  <h2>reCAPTCHA v3 Token Generator (Test Key)</h2>
+
+  <button onclick="generateToken()">Generate Token</button>
+  <button onclick="copyToken()">Copy Token</button>
+
+  <p><strong>Token:</strong></p>
+  <textarea id="tokenBox" rows="6" cols="80" readonly></textarea>
+
+  <script>
+    // Generate a test token
+    function generateToken() {
+      grecaptcha.ready(function () {
+        grecaptcha.execute("6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI", { action: "register" })
+          .then(function (token) {
+            console.log("Generated Token:", token);
+            document.getElementById("tokenBox").value = token;
+          });
+      });
+    }
+
+    // Copy token to clipboard
+    function copyToken() {
+      const tokenBox = document.getElementById("tokenBox");
+      tokenBox.select();
+      tokenBox.setSelectionRange(0, 99999); // for mobile
+      document.execCommand("copy");
+      alert("Token copied to clipboard!");
+    }
+  </script>
+</body>
+</html>
