@@ -33,6 +33,7 @@ from django.conf import settings
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from rest_framework.permissions import AllowAny
+from django.views.decorators.csrf import csrf_exempt
 
 audit_logger = logging.getLogger('auth_app.audit')
 
@@ -70,8 +71,18 @@ def register(request):
     serializer = RegisterSerializer(data=request.data, context={"request": request})
     if serializer.is_valid():
         user = serializer.save()
-        create_audit_log(user, 'signup', get_client_ip(request), request.META.get('HTTP_USER_AGENT', ''), {'email': user.email})
-        return Response({'message': 'User registered successfully. Please verify your phone number.', 'user_id': user.id}, status=201)
+        # Audit log still fine
+        create_audit_log(
+            user, 
+            'signup', 
+            get_client_ip(request), 
+            request.META.get('HTTP_USER_AGENT', ''), 
+            {'email': user.email}
+        )
+        return Response(
+            {'message': 'User registered successfully.'}, 
+            status=201
+        )
     return Response(serializer.errors, status=400)
 
 @api_view(['POST'])
@@ -194,9 +205,6 @@ def google_oauth(request):
 @permission_classes([permissions.AllowAny])
 @ratelimit(key='ip', rate='5/m', method='POST', block=True)
 def send_firebase_otp(request):
-    """
-    Production-ready Firebase OTP sending endpoint with serializer validation
-    """
     serializer = SendOTPSerializer(data=request.data, context={"request": request})
     
     if serializer.is_valid():
@@ -227,20 +235,25 @@ def send_firebase_otp(request):
                     status=status.HTTP_429_TOO_MANY_REQUESTS
                 )
             
-            # Create or get OTP verification record
-            otp_verification, created = OTPVerification.objects.get_or_create(
+            # Create or update OTP verification record
+            # First, try to get an existing unverified record
+            otp_verification = OTPVerification.objects.filter(
                 phone_number=phone_number,
-                is_verified=False,
-                defaults={
-                    'user': user,
-                    'created_at': timezone.now()
-                }
-            )
+                is_verified=False
+            ).first()
             
-            if not created:
+            if otp_verification:
+                # Update existing record
                 otp_verification.user = user
                 otp_verification.created_at = timezone.now()
                 otp_verification.save(update_fields=['user', 'created_at'])
+            else:
+                # Create new record
+                otp_verification = OTPVerification.objects.create(
+                    phone_number=phone_number,
+                    user=user,
+                    created_at=timezone.now()
+                )
             
             # Generate session ID
             session_id = str(uuid.uuid4())
@@ -279,98 +292,78 @@ def send_firebase_otp(request):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)@api_view(['POST']) # type: ignore
 
-@api_view(['POST'])
+@csrf_exempt
 @permission_classes([permissions.AllowAny])
-@ratelimit(key='ip', rate='10/m', method='POST', block=True)
-def verify_otp(request):
-    serializer = OTPVerificationSerializer(data=request.data)
+@ratelimit(key='ip', rate='5/m', method='POST', block=True)
+def verify_firebase_otp(request):
+    """
+    Production-ready Firebase OTP verification endpoint
+    """
+    serializer = VerifyOTPSerializer(data=request.data, context={"request": request})
+    
     if serializer.is_valid():
-        firebase_id_token = serializer.validated_data['firebase_id_token']
-        phone_number = serializer.validated_data['phone_number']
-        
         try:
-            # Validate phone number format
-            phone_validator(phone_number)
-        except ValidationError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            decoded_token = auth.verify_id_token(firebase_id_token)
-            firebase_phone = decoded_token.get('phone_number')
-            firebase_uid = decoded_token.get('uid')
+            session_id = serializer.validated_data['session_id']
+            otp_code = serializer.validated_data['otp_code']
 
-            if not firebase_phone or firebase_phone != phone_number:
-                audit_logger.warning(f"Phone number mismatch: {phone_number} vs {firebase_phone}")
-                return Response({'error': 'Invalid phone number in Firebase token'}, status=status.HTTP_400_BAD_REQUEST)
+            # Lookup session
+            cache_key = f"otp_session_{session_id}"
+            session_data = cache.get(cache_key)
+            if not session_data:
+                return Response({'error': 'Invalid or expired session'}, status=status.HTTP_400_BAD_REQUEST)
 
-            try:
-                otp_verification = OTPVerification.objects.select_related('user').get(
-                    phone_number=phone_number, 
-                    is_verified=False
-                )
-                
-                # Check if OTP is expired (5 minutes)
-                if otp_verification.created_at < timezone.now() - timedelta(minutes=5):
-                    otp_verification.delete()
-                    return Response(
-                        {'error': 'OTP expired. Please request a new one.'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                user = otp_verification.user
-                if not user:
-                    return Response(
-                        {'error': 'User not found'}, 
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                # Update verification record
-                otp_verification.is_verified = True
-                otp_verification.verified_at = timezone.now()
-                otp_verification.firebase_uid = firebase_uid
-                otp_verification.save()
+            phone_number = session_data['phone_number']
+            user_id = session_data.get('user_id')
 
-                # Update user
-                user.is_phone_verified = True
+            # Validate OTP against Firebase (client must provide verification)
+            # This assumes you call Firebase client SDK for verification,
+            # or you have a backend check function:
+            if not verify_firebase_code(phone_number, otp_code):
+                return Response({'error': 'Invalid OTP'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Mark verification record
+            otp_verification = OTPVerification.objects.filter(
+                id=session_data['otp_verification_id'],
+                phone_number=phone_number,
+                is_verified=False
+            ).first()
+
+            if not otp_verification:
+                return Response({'error': 'OTP session not found or already verified'}, status=status.HTTP_400_BAD_REQUEST)
+
+            otp_verification.is_verified = True
+            otp_verification.verified_at = timezone.now()
+            otp_verification.save(update_fields=['is_verified', 'verified_at'])
+
+            # Link user if provided
+            if user_id:
+                user = User.objects.get(id=user_id)
                 user.phone_number = phone_number
-                user.save()
+                user.is_phone_verified = True
+                user.save(update_fields=['phone_number', 'is_phone_verified'])
 
-                refresh = RefreshToken.for_user(user)
-                _store_refresh_token(user, refresh, request)
+            # Cleanup cache
+            cache.delete(cache_key)
 
-                response = Response({
-                    'access_token': str(refresh.access_token), 
-                    'user': UserSerializer(user).data, 
-                    'message': 'Phone verification successful'
-                })
-                _set_refresh_cookie(response, refresh, request)
+            # Audit logging
+            create_audit_log(
+                user=user if user_id else None,
+                event='otp_verified',
+                ip_address=get_client_ip(request),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                details={'phone_number': phone_number, 'session_id': session_id}
+            )
 
-                create_audit_log(
-                    user, 
-                    'otp_verified', 
-                    get_client_ip(request), 
-                    request.META.get('HTTP_USER_AGENT', ''), 
-                    {'phone_number': phone_number, 'firebase_uid': firebase_uid}
-                )
-                
-                audit_logger.info(f"OTP verified successfully for {phone_number}")
-                return response
-                
-            except OTPVerification.DoesNotExist:
-                audit_logger.warning(f"OTP verification record not found for {phone_number}")
-                return Response(
-                    {'error': 'Invalid or expired OTP verification'}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            return Response(
+                {'message': 'Phone number verified successfully'},
+                status=status.HTTP_200_OK
+            )
 
         except Exception as e:
-            audit_logger.error(f"Firebase token verification failed: {str(e)}")
-            return Response(
-                {'error': 'Invalid or expired Firebase token'}, 
-                status=status.HTTP_401_UNAUTHORIZED
-            )
+            audit_logger.error(f"Error in verify_firebase_otp: {str(e)}", exc_info=True)
+            return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

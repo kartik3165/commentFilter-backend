@@ -51,8 +51,9 @@ class AuthAuditLog(models.Model):
     class Meta:
         ordering = ['-timestamp']
 
+# models.py - Update your OTPVerification model
 class OTPVerification(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
     phone_number = models.CharField(max_length=15)
     firebase_uid = models.CharField(max_length=128, blank=True, null=True)
     is_verified = models.BooleanField(default=False)
@@ -60,8 +61,17 @@ class OTPVerification(models.Model):
     verified_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        unique_together = ['user', 'phone_number']
+        # Allow multiple unverified OTPs for the same phone number
+        constraints = [
+            models.UniqueConstraint(
+                fields=['phone_number'], 
+                condition=models.Q(is_verified=False),
+                name='unique_unverified_phone'
+            )
+        ]
 
+    def __str__(self):
+        return f"OTP for {self.phone_number} (verified={self.is_verified})"
 class UserRefreshToken(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     token = models.CharField(max_length=255, unique=True)

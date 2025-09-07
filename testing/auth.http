@@ -1,13 +1,12 @@
 # Register
-POST http://localhost:8001/api/auth/register/
+POST http://localhost:8003/api/auth/register/
 Content-Type: application/json
 
 {
-  "email": "test@example.com",
-  "username": "testuser",
+  "email": "sohamwagh27@gmail.com",
+  "username": "goham",
   "password": "TestPassword123!",
   "password_confirm": "TestPassword123!",
-  "phone_number": "+1234567890",
   "recaptcha_token": "your-recaptcha-token"
 }
 
@@ -83,7 +82,7 @@ Content-Type: application/json
 POST http://localhost:8000/api/auth/logout/
 Content-Type: application/json
 Authorization: Bearer your-access-token
-Cookie: refresh_token=your-refresh-token
+Cookie: refresh_token=123456789
 
 {}
 

@@ -73,11 +73,10 @@ class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
     password_confirm = serializers.CharField(write_only=True)
     recaptcha_token = serializers.CharField(write_only=True)
-    phone_number = serializers.CharField(required=True)
 
     class Meta:
         model = User
-        fields = ("email", "username", "password", "password_confirm", "phone_number", "recaptcha_token")
+        fields = ("email", "username", "password", "password_confirm", "recaptcha_token")
 
     def validate(self, attrs):
         # Password match first
@@ -96,10 +95,9 @@ class RegisterSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        phone_number = validated_data.pop("phone_number")
         user = User.objects.create_user(**validated_data)
         # Create OTP verification record
-        OTPVerification.objects.create(user=user, phone_number=phone_number)
+        OTPVerification.objects.create(user=user, phone_number=None)
         return user
 
 
@@ -192,23 +190,16 @@ class SendOTPSerializer(serializers.Serializer):
 
 
 class VerifyOTPSerializer(serializers.Serializer):
-    firebase_id_token = serializers.CharField(required=True)
-    phone_number = serializers.CharField(required=True)
-    session_id = serializers.CharField(required=False, allow_blank=True)
+    session_id = serializers.CharField(required=True)
+    otp_code = serializers.CharField(required=True, max_length=6)
     
-    def validate_phone_number(self, value):
-        import re
-        phone_pattern = r'^\+[1-9]\d{1,14}$'
-        if not re.match(phone_pattern, value):
-            raise serializers.ValidationError(
-                'Enter a valid phone number in E.164 format (e.g., +1234567890)'
-            )
+    def validate_otp_code(self, value):
+        if not value.isdigit():
+            raise serializers.ValidationError("OTP must be numeric")
+        if len(value) != 6:
+            raise serializers.ValidationError("OTP must be 6 digits")
         return value
-    
-    def validate_firebase_id_token(self, value):
-        if not value:
-            raise serializers.ValidationError("Firebase ID token is required")
-        return value
+
 
 
 # Update your existing OTPVerificationSerializer to inherit from the new one
