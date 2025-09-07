@@ -132,15 +132,91 @@ class LoginSerializer(serializers.Serializer):
         attrs["user"] = user
         return attrs
 
+# Add these to your existing serializers.py
 
-class OTPVerificationSerializer(serializers.Serializer):
-    firebase_id_token = serializers.CharField()
-    phone_number = serializers.CharField()
+class SendOTPSerializer(serializers.Serializer):
+    """
+    Serializer for sending OTP requests
+    """
+    phone_number = serializers.CharField(required=True, max_length=15)
+    user_id = serializers.IntegerField(required=False, allow_null=True)
+    recaptcha_token = serializers.CharField(required=True, write_only=True)
+    
+    def validate_phone_number(self, value):
+        """Validate phone number format (E.164)"""
+        import re
+        phone_pattern = r'^\+[1-9]\d{1,14}$'
+        if not re.match(phone_pattern, value):
+            raise serializers.ValidationError(
+                'Enter a valid phone number in E.164 format (e.g., +1234567890)'
+            )
+        return value
+    
+    def validate_recaptcha_token(self, value):
+        """Validate reCAPTCHA token"""
+        if not value:
+            raise serializers.ValidationError("This field is required")
+        # Use your existing verify_recaptcha_v3 function
+        verify_recaptcha_v3(value, expected_action="send_otp", request=self.context.get("request"))
+        return value
+    
+    def validate_user_id(self, value):
+        """Validate user exists if provided"""
+        if value is not None:
+            try:
+                User.objects.get(id=value)
+            except User.DoesNotExist:
+                raise serializers.ValidationError("Invalid user ID")
+        return value
+    
+    def validate(self, attrs):
+        """Additional cross-field validation"""
+        phone_number = attrs.get('phone_number')
+        user_id = attrs.get('user_id')
+        
+        # If user_id provided, verify phone number matches user's existing phone (if any)
+        if user_id:
+            try:
+                user = User.objects.get(id=user_id)
+                # Check if user already has a different verified phone number
+                if user.is_phone_verified and user.phone_number and user.phone_number != phone_number:
+                    raise serializers.ValidationError({
+                        'phone_number': 'This phone number does not match your verified phone number'
+                    })
+            except User.DoesNotExist:
+                raise serializers.ValidationError({
+                    'user_id': 'Invalid user ID'
+                })
+        
+        return attrs
 
+
+class VerifyOTPSerializer(serializers.Serializer):
+    firebase_id_token = serializers.CharField(required=True)
+    phone_number = serializers.CharField(required=True)
+    session_id = serializers.CharField(required=False, allow_blank=True)
+    
+    def validate_phone_number(self, value):
+        import re
+        phone_pattern = r'^\+[1-9]\d{1,14}$'
+        if not re.match(phone_pattern, value):
+            raise serializers.ValidationError(
+                'Enter a valid phone number in E.164 format (e.g., +1234567890)'
+            )
+        return value
+    
     def validate_firebase_id_token(self, value):
         if not value:
             raise serializers.ValidationError("Firebase ID token is required")
         return value
+
+
+# Update your existing OTPVerificationSerializer to inherit from the new one
+class OTPVerificationSerializer(VerifyOTPSerializer):
+    pass
+
+
+
 
 
 class UserSerializer(serializers.ModelSerializer):

@@ -24,27 +24,48 @@ Content-Type: application/json
 }
 
 ###
-
-# Verify OTP
-POST http://localhost:8000/api/auth/verify-otp/
+# Get Firebase token ID
+POST https://identitytoolkit.googleapis.com/v1/accounts:signInWithPhoneNumber?key=AIzaSyD2zYYd0gQfqhVLfgFHssfLoCw-v4OHgis
 Content-Type: application/json
 
 {
-  "firebase_id_token": "your-firebase-id-token",
+  "sessionInfo": "SESSION_INFO_FROM_SEND_CODE",
+  "code": "123456"
+}
+
+
+###
+#Sent OTP
+POST http://localhost:8001/api/auth/send-otp/
+Content-Type: application/json
+
+{
+  "phone_number": "+1234567890",
+  "user_id": 1,
+  "recaptcha_token": "test-token"
+}
+
+
+###
+# Verify OTP
+POST http://localhost:8001/api/auth/verify-otp/
+Content-Type: application/json
+
+{
+  "firebase_id_token": "3SXOSh3ur5XiCgEIr02QXbABUyV2",
   "phone_number": "+1234567890"
 }
 
 ###
 
 # Google OAuth
-POST http://localhost:8000/api/auth/google-oauth/
+POST http://localhost:8001/api/auth/google-oauth/
 Content-Type: application/json
 
 {
-  "id_token": "your-google-id-token",
-  "email": "test@example.com",
-  "name": "Test User"
+  "id_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjJkN2VkMzM4YzBmMTQ1N2IyMTRhMjc0YjVlMGU2NjdiNDRhNDJkZGUiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJhenAiOiI0MDc0MDg3MTgxOTIuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJhdWQiOiI0MDc0MDg3MTgxOTIuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJzdWIiOiIxMTY2Mzc1NzQxMzUxMjkzODY3NzUiLCJlbWFpbCI6ImthcnRpa25hZ2FyZTMxNjVAZ21haWwuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImF0X2hhc2giOiJfdkRkWGJpUW1yMnN3N1B4VVZqcm5BIiwiaWF0IjoxNzU2OTkwMjQyLCJleHAiOjE3NTY5OTM4NDJ9.prC0qZTtGch0J2xBRVBduB0_9U-ascep-btx0PVPgbkPmuXu5zrJgPhCPaDkOBvKHy2HvhUjNbZwyrtJoQxjFFQs77KTjll4N_InbCq_6nW2AXpO37vceJua23TX39E7kFsaRHJdEscGsxosijn8jzB-GRG-EhOZIumxz7xy0rmI-it0c7C_toPAIWtYOBoAkOaLYpUFDPPhKiwN2UWb8eMUtpdHZndSneoC3Gp1A0AYRhXf4sxispbXXrErdavxCh72uD435-9Dwi-P2H2SxXgE1irr1jmqbe9l6_zR8Bsr0Sy1p7gIkCx8mf6xQXP2I9TmErZtkw2NAyOgWttlRg"
 }
+
 
 ###
 

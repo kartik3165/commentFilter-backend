@@ -231,21 +231,32 @@ RATELIMIT_USE_CACHE = 'default'
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+    },
     'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
         'auth_file': {
-            'level': 'INFO',
             'class': 'logging.FileHandler',
             'filename': 'logs/auth_audit.log',
+            'formatter': 'verbose',
         },
     },
     'loggers': {
         'auth_app.audit': {
-            'handlers': ['auth_file'],
-            'level': 'INFO',
+            'handlers': ['console', 'auth_file'],
+            'level': 'DEBUG',  # or INFO
             'propagate': False,
         },
     },
 }
+
 
 # Ensure logs directory exists
 os.makedirs('logs', exist_ok=True)
