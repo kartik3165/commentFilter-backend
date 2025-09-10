@@ -228,6 +228,15 @@ RECAPTCHA_SECRET_KEY = config('RECAPTCHA_SECRET_KEY', default='')
 # --------------------------
 # Meta details
 # --------------------------
-META_APP_ID=
-META_APP_SECRET=
-META_REDIRECT_URL=
+META_APP_ID=''
+META_APP_SECRET=''
+META_REDIRECT_URL=''
+
+# --------------------------
+# Celery details
+# --------------------------
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='')
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='')
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"

@@ -1,7 +1,10 @@
 import uuid
 from django.db import models
-from auth_app.models import User
 from django.utils import timezone
+from django.contrib.auth import get_user_model
+from admin_app.models import Platform
+
+User = get_user_model()
 
 class Social_account(models.Model):
     PLATFORM_CHOICES = [
@@ -11,7 +14,7 @@ class Social_account(models.Model):
 
     id                  = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user_id             = models.ForeignKey( User, on_delete=models.CASCADE, related_name='social_accounts')
-    platform            = models.CharField(max_length=50, choices=PLATFORM_CHOICES, default='instagram')
+    platform            = models.ForeignKey(Platform, on_delete=models.CASCADE)
     platform_account_id = models.CharField(max_length=100)
     access_token        = models.CharField(max_length=200)
     status              = models.BooleanField(default=True)
