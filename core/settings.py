@@ -45,10 +45,13 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'django_ratelimit',
+    'django_celery_results',
 
     # Custom apps
     'auth_app',
-    'social_app'
+    'social_app',
+    'admin_app',
+    'moderator_app'
 ]
 
 # --------------------------
@@ -194,7 +197,7 @@ LOGGING = {
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/1'),
+        'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/0'),
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
         }
@@ -231,12 +234,20 @@ RECAPTCHA_SECRET_KEY = config('RECAPTCHA_SECRET_KEY', default='')
 META_APP_ID=''
 META_APP_SECRET=''
 META_REDIRECT_URL=''
+META_VERIFICATION_TOKEN='12345'
+
 
 # --------------------------
 # Celery details
 # --------------------------
 CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='')
-CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='')
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='django-db')
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
+CELERY_TASK_ACKS_LATE = True
+
+
+#Temp
+
+Token = 'token'

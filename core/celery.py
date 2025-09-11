@@ -2,9 +2,9 @@ import os
 from celery import Celery
 from kombu import Queue
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "postmoderator.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
 
-app = Celery("moderator_app")
+app = Celery("core")
 
 app.config_from_object("django.conf:settings", namespace="CELERY")
 

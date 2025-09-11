@@ -1,0 +1,20 @@
+
+### Test webhook verification (GET)
+GET http://127.0.0.1:8001/api/moderator/webhook/meta/?hub.verify_token=12345&hub.challenge=12345
+
+### Test initial webhook notification (POST)
+POST http://127.0.0.1:8001//api/moderator/webhook/meta/
+Content-Type: application/json
+
+[
+  {
+    "object": "user",
+    "object_id": "17841400000000000",
+    "changed_aspect": "media",
+    "time": 1694354672,
+    "data": {
+        "media_id": "173455567890123"
+    },
+    "subscription_id": 1234567890
+}
+]
