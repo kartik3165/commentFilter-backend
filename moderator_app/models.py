@@ -37,3 +37,53 @@ class Comment(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
 
 
+
+
+
+import requests
+import json
+import re
+from django.shortcuts import get_object_or_404
+
+def extract_summary(content: str) -> str:
+    """Extract text inside { } if present."""
+    match = re.search(r"\{(.*?)\}", content)
+    if match:
+        return match.group(1).strip()
+    return content.strip()
+
+def generate_Summary(self, media_id):
+    try:
+        post = get_object_or_404(Post, platform_post_id=media_id)
+
+        url = "http://localhost:11434/api/chat"  # change if Docker mapped differently
+        payload = {
+            "model": "mistral",  # or llama2, qwen, etc.
+            "messages": [
+                {
+                    "role": "user",
+                    "content": (
+                        f'Summarize "{post.caption_original}" into exactly 8 words '
+                        f'for a {post.media_type} on {post.platform}. '
+                        f'Return only eight word summary with this {{}} bracket.'
+                    )
+                }
+            ],
+            "stream": False
+        }
+
+        response = requests.post(url, json=payload)
+        response.raise_for_status()
+        data = response.json()
+
+        # Extract raw content from Ollama
+        content = data["message"]["content"]
+
+        # Get clean summary (inside {})
+        summary = extract_summary(content)
+        return summary
+
+    except requests.RequestException as e:
+        raise self.retry(exc=e)
+    except Exception as e:
+        return self.retry(exc=e)

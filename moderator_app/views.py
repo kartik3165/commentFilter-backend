@@ -11,9 +11,9 @@ from django_ratelimit.decorators import ratelimit
 from django_ratelimit.exceptions import Ratelimited
 from django.conf import settings
 from django.utils import timezone
-from moderator_app.serializers import GetPostCaptionSerializer
 
-from moderator_app.task import store_mediaIdTask, get_postInfoTask
+from moderator_app.serializers import GetPostCaptionSerializer
+from moderator_app.tasks import generatePostSummaryChain, get_postInfoTask, store_mediaIdTask, generate_Summary
 
 User = get_user_model()
 
@@ -34,7 +34,7 @@ class Meta_WebhookView(views.APIView):
             for change in payload:
                 media_id = change.get("data", {}).get("media_id")
                 if media_id:
-                    store_mediaIdTask.delay(media_id) # type: ignore
+                    generatePostSummaryChain(media_id) 
         except Exception as e:
             return Response(
                 {"error": "Invalid payload"},
@@ -46,4 +46,5 @@ class Meta_WebhookView(views.APIView):
                 status=status.HTTP_200_OK
             )
 
-            
+
+

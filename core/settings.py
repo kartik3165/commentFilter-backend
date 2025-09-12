@@ -175,21 +175,21 @@ SIMPLE_JWT = {
 # --------------------------
 # Logging
 # --------------------------
-LOGGING = {
-    'version': 1,
-    'handlers': {
-        'file': {
-            'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'auth.log',
-        }
-    },
-    'loggers': {
-        'auth': {
-            'handlers': ['file'],
-            'level': 'INFO',
-        }
-    },
-}
+# LOGGING = {
+#     'version': 1,
+#     'handlers': {
+#         'file': {
+#             'class': 'logging.FileHandler',
+#             'filename': BASE_DIR / 'auth.log',
+#         }
+#     },
+#     'loggers': {
+#         'auth': {
+#             'handlers': ['file'],
+#             'level': 'INFO',
+#         }
+#     },
+# }
 
 # --------------------------
 # Caches / Redis
@@ -251,3 +251,38 @@ CELERY_TASK_ACKS_LATE = True
 #Temp
 
 Token = 'token'
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'auth.log',
+            'formatter': 'verbose',
+        },
+    },
+    'formatters': {
+        'verbose': {
+            'format': '[{asctime}] {levelname} [{name}] {message}',
+            'style': '{',
+        },
+    },
+    'loggers': {
+        'auth': {
+            'handlers': ['file'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'celery': {
+            'handlers': ['file'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'django': {
+            'handlers': ['file'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+    },
+}
