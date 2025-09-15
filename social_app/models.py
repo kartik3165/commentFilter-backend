@@ -16,6 +16,7 @@ class Social_account(models.Model):
     user_id             = models.ForeignKey( User, on_delete=models.CASCADE, related_name='social_accounts')
     platform            = models.ForeignKey(Platform, on_delete=models.CASCADE)
     platform_account_id = models.CharField(max_length=100)
+    username            = models.CharField(max_length=150, null=True, blank=True)
     access_token        = models.CharField(max_length=200)
     status              = models.BooleanField(default=True)
     linked_at           = models.DateTimeField(auto_now_add=True)

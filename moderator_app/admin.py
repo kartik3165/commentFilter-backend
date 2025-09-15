@@ -4,10 +4,10 @@ from .models import Post, Comment
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
     list_display = (
-        'platform_post_id', 'user_id', 'platform', 'media_type', 
+        'platform_post_id', 'user_id', 'media_type', 
         'summary_generated', 'first_seen_at', 'created_at'
     )
-    list_filter = ('media_type', 'summary_generated', 'platform')
+    list_filter = ('media_type', 'summary_generated',)
     search_fields = ('platform_post_id', 'caption_original', 'user_id__username')
     readonly_fields = ('created_at',)
     ordering = ('-created_at',)

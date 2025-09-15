@@ -2,7 +2,7 @@ import uuid
 from django.db import models
 
 class Platform(models.Model):
-    Platform   = models.CharField(max_length=100, null=True, blank=True)
+    name   = models.CharField(max_length=100, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
 

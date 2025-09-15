@@ -247,7 +247,11 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TASK_ACKS_LATE = True
 
-
+# --------------------------
+# Open router details
+# --------------------------
+OPENROUTER_API_KEY = config('OPENROUTER_API_KEY', default='')
+SITE_URL = 'http://localhost:8001'
 #Temp
 
 Token = 'token'
