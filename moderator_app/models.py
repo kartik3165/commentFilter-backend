@@ -23,7 +23,7 @@ class Comment(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="comments", null=True)
     platform_comment_id = models.CharField(max_length=128, unique=True, blank=True, null=True)
     parent_comment_id = models.CharField(max_length=200, blank=True, null=True)
-    is_reply = models.BooleanField(default=False)
+    is_reply = models.BooleanField(null=True)
     comment = models.TextField(blank=True, null=True)
     author = models.CharField(null=True,blank=True, max_length=150)
     tone_integer = models.IntegerField(null=True, blank=True)

@@ -55,7 +55,6 @@ def get_postInfoTask(self, media_id):
             post.media_url = valid_data.get('media_url')
             post.caption_original = valid_data.get('caption_original', '')
 
-            # ✅ Prefer stable owner.id (Instagram user ID) over username
             owner_id = data.get('owner', {}).get('id')
             if owner_id:
                 social_account = Social_account.objects.filter(
@@ -80,7 +79,6 @@ def get_postInfoTask(self, media_id):
             logger.error(f"[get_postInfoTask] Raw data received: {data}")
             logger.error(f"[get_postInfoTask] Serializer data: {serializer_data}")
             raise Exception(f"Serializer validation failed: {serializer.errors}")
-                
     except requests.RequestException as e:
         logger.error(f"[get_postInfoTask] Request Error: {e}")
         raise self.retry(exc=e)
@@ -91,7 +89,6 @@ def get_postInfoTask(self, media_id):
 @shared_task(bind=True, max_retries=5, default_retry_delay=30, queue="webhook_post_queue")
 def generate_summary(self, media_id):
     try:
-        # Verify post exists and has required data
         try:
             post = Post.objects.get(platform_post_id=media_id)
             post.refresh_from_db()
@@ -99,12 +96,10 @@ def generate_summary(self, media_id):
             logger.error(f"[generate_summary] Post with media_id {media_id} not found")
             raise Exception(f"Post with media_id {media_id} not found")
         
-        # Check if caption_original exists
         if not post.caption_original:
             logger.error(f"[generate_summary] Post {media_id} has no caption_original")
             raise Exception(f"Post {media_id} has no caption to summarize")
         
-        # OpenRouter API configuration
         headers = {
             "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
             "Content-Type": "application/json",
@@ -116,8 +111,12 @@ def generate_summary(self, media_id):
             "model": "nvidia/nemotron-nano-9b-v2:free", 
             "messages": [{
                 "role": "user",
-                "content": f'Summarize "{post.caption_original}" into exactly 8 words for a {post.media_type} on Instagram. Return only the eight word summary enclosed in curly brackets {{}}.'
-            }],
+                "content": f'''
+                        Summarize this Instagram caption for {post.media_type} into exactly 8 words.  
+                        Return only the summary inside curly brackets {{}}.  
+                        Caption: "{post.caption_original}"
+                        '''
+                }],
             "stream": False,
             "temperature": 0.7,
             "max_tokens": 100
@@ -137,7 +136,6 @@ def generate_summary(self, media_id):
         
         logger.info(f"[generate_summary] OpenRouter API response: {data}")
 
-        # Extract content from OpenRouter response
         if 'choices' not in data or not data['choices']:
             logger.warning(f"[generate_summary] No choices returned from API")
             raise self.retry(exc=Exception("No response from OpenRouter API"))
@@ -148,10 +146,8 @@ def generate_summary(self, media_id):
             logger.warning(f"[generate_summary] Empty content returned from API")
             raise self.retry(exc=Exception("Empty response from OpenRouter API"))
         
-        # Extract summary from response (assuming it returns content in {} brackets)
         result = extract_summary(content)
-        
-        # Update post with summary
+
         post.caption_summary = result
         post.summary_generated = True
         post.save()
@@ -181,26 +177,163 @@ def generatePostSummaryChain(media_id):
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=5, queue='meta_comment_info_queue')
-def store_commentIdTask(self, comment_id):
+def store_commentTask(self, comment_data):
     try:
-        created, _ = Comment.objects.get_or_create(platform_comment_id = comment_id)
-        logger.info(f'comment added {comment_id}')
-        return comment_id
+        comment_id = comment_data.get("comment_id")
+        parent_id = comment_data.get("parent_id")
+        post_id = comment_data.get("post_id")
+        text = comment_data.get("text")
+        username = comment_data.get("username")
+
+        try:
+            get_post = Post.objects.get(platform_post_id=post_id)
+        except Post.DoesNotExist:
+            logger.warning(f"Post with platform_post_id={post_id} not found, skipping comment {comment_id}")
+            return  
+        if parent_id:
+            praent_comment, _ = Comment.objects.get_or_create(
+                platform_comment_id=parent_id,
+                defaults={
+                    'parent_comment_id' : None,
+                    'post': get_post,
+                    'comment' : '',
+                    'author' : '',
+                    'is_reply' : False
+                }
+            )
+            created, _ = Comment.objects.get_or_create(
+                platform_comment_id=comment_id,
+                parent_comment_id=parent_id,
+                post=get_post, 
+                comment=text,
+                author=username,
+                is_reply = True
+            )
+            logger.info(f'subcomment added {comment_id}')
+            return comment_id
+        else:
+            
+            created, _ = Comment.objects.get_or_create(
+                platform_comment_id=comment_id,
+                parent_comment_id=None,
+                post=get_post, 
+                comment=text,
+                author=username,
+                is_reply = False
+            )
+            logger.info(f'Comment added {comment_id}')
+            return comment_id
+
     except Exception as e:
         logger.error(f'store_comment_id Error: {e}')
         raise self.retry(exc=e)
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=5, queue='meta_comment_info_queue')
-def get_commentInfoTask(self,comment_id):
+def commentAnalysisTask(self,comment_id):
+    payload = {}
     try:
-        response = requests.get('http://127.0.0.1:8002/api/comment/')
-    except:
-        pass
+        try:
+            comt = Comment.objects.get(platform_comment_id = comment_id)
+            comt.refresh_from_db()
+        except Comment.DoesNotExist:
+            logger.error(f'comment not found for comment ID {comment_id}')
+            raise Exception(f'comment not found for comment ID {comment_id}')
+        
+        headers = {
+            "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": settings.SITE_URL if hasattr(settings, 'SITE_URL') else "http://localhost:8001",
+            "X-Title": "Instagram Summary Generator"
+        }
 
-def getCommentDecisionChain(comment_id):
+        if not comt.is_reply:
+            payload = {
+                "model": "nvidia/nemotron-nano-9b-v2:free", 
+                "messages": [{
+                    "role": "user",
+                    "content": f'''
+                            Classify this Instagram comment into ONE category:  
+                            1 Flirty, 2 Vulgar, 3 Negative, 4 Normal, 5 Spam, 6 Supportive, 7 Question.  
+                            Post Summary: "{comt.post.caption_summary}"  
+                            Comment: "{comt.comment}"  
+                            Answer only with the number.
+                            '''
+                    }],
+                    "stream": False,
+                    "temperature": 0,
+                    "max_tokens": 10
+                }
+        else:
+            try:
+                parent_comt = Comment.objects.get(platform_comment_id = comt.parent_comment_id)
+            except Comment.DoesNotExist:
+                raise Exception(f'parent comment is not found')
+            payload = {
+                "model": "nvidia/nemotron-nano-9b-v2:free", 
+                "messages": [{
+                    "role": "user",
+                    "content": f'''
+                            Classify this Instagram comment into ONE category:  
+                            1 Flirty, 2 Vulgar, 3 Negative, 4 Normal, 5 Spam, 6 Supportive, 7 Question.  
+                            Post Summary: "{comt.post.caption_summary}"  
+                            Parent Comment: "{parent_comt.comment}"  
+                            Reply: "{comt.comment}"  
+                            Answer only with the number.
+                            '''
+                            }],
+                    "stream": False,
+                    "temperature": 0,
+                    "max_tokens": 10
+                }
+
+
+        logger.info(f'[generate_summary] comment analysis for post {comment_id}')
+            
+            # Call OpenRouter API
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        logger.info(f"[generate_summary] OpenRouter API response: {data}")
+
+        if 'choices' not in data or not data['choices']:
+            logger.warning(f"[generate_summary] No choices returned from API")
+            raise self.retry(exc=Exception("No response from OpenRouter API"))
+        
+        content = data['choices'][0]['message']['content']
+        
+        if not content:
+            logger.warning(f"[generate_summary] Empty content returned from API")
+            raise self.retry(exc=Exception("Empty response from OpenRouter API"))
+        
+        result = extract_summary(content)
+
+        comt.tone_integer = result
+        comt.save()
+        
+        logger.info(f"[generate_summary] comment analysis for {comment_id}: {result}")
+        return result
+    
+    except requests.RequestException as e:
+        logger.error(f"[comment analysis] OpenRouter API Request Error: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            logger.error(f"[comment analysis] Response status: {e.response.status_code}")
+            logger.error(f"[comment analysis] Response content: {e.response.text}")
+        raise self.retry(exc=e)
+    except Exception as e:
+        logger.error(f"[comment analysis] Error: {e}")
+        raise self.retry(exc=e)
+
+def getCommentDecisionChain(comment_data):
     workflow = chain(
-        store_commentIdTask.s(comment_id),
+        store_commentTask.s(comment_data),
+        commentAnalysisTask.s()
     )
 
     workflow.apply_async()

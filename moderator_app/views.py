@@ -66,14 +66,25 @@ class Meta_CommentWebhookView(views.APIView):
                     if change.get("field") == "comments":
                         value = change.get("value", {})
                         comment_id = value.get("id")
+                        parent_id = value.get("parent_id") 
+                        post_id = value.get("media", {}).get("id")
+                        text = value.get("text")
+                        username = value.get("username")
                         if comment_id:
-                            comment_list.append(comment_id)
-                            getCommentDecisionChain.delay(comment_id) # type: ignore
+                            comment_data = {
+                                        "comment_id": comment_id,
+                                        "parent_id": parent_id,
+                                        "post_id": post_id,
+                                        "text": text,
+                                        "username": username,
+                                    }
+                            comment_list.append(comment_data)
+                            getCommentDecisionChain(comment_data) # type: ignore
                         
-                        # parent_id = value.get("parent_id") 
-                        # post_id = value.get("media", {}).get("id")
-                        # text = value.get("text")
-                        # username = value.get("username")
+                        parent_id = value.get("parent_id") 
+                        post_id = value.get("media", {}).get("id")
+                        text = value.get("text")
+                        username = value.get("username")
 
         except Exception as e:
             return Response(
@@ -84,7 +95,6 @@ class Meta_CommentWebhookView(views.APIView):
         return Response(
             {
                 "message": "comment payload processed",
-                'process_comment' : f'{comment_list}'
             },
             status=status.HTTP_200_OK
         )
