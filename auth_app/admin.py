@@ -51,7 +51,7 @@ class UserAdmin(BaseUserAdmin):
     list_filter = ('role', 'is_staff', 'is_active', 'plan_type')
     fieldsets = (
         (None, {'fields': ('mobile', 'name', 'password')}),
-        ('Personal Info', {'fields': ('plan_type', 'email')}),
+        ('Personal Info', {'fields': ('plan_type', 'email','default_tone')}),
         ('Permissions', {'fields': ('role', 'is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Important dates', {'fields': ('last_login', 'created_at', 'updated_at')}),
     )
@@ -59,7 +59,7 @@ class UserAdmin(BaseUserAdmin):
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('mobile', 'name', 'role', 'plan_type', 'password1', 'password2', 'is_active', 'is_staff')}
+            'fields': ('mobile', 'name', 'role', 'plan_type', 'password1', 'password2', 'is_active', 'is_staff', 'default_tone')}
         ),
     )
     

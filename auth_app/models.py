@@ -4,6 +4,10 @@ from typing import Iterable
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.db import models
 
+
+
+
+
 class UserManager(BaseUserManager):
     def create_user(self, mobile, name, role, **extra_fields):
         if not mobile: raise ValueError('Mobile number required')
@@ -36,6 +40,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     plan_type         = models.CharField(max_length=100, blank=True)
     trial_start       = models.DateTimeField(null=True, blank=True)
     trial_end         = models.DateTimeField(null=True, blank=True)
+    default_tone      = models.ForeignKey('moderator_app.Tone', on_delete=models.SET_NULL, null=True, blank=True, related_name='default_for_users')
     is_active         = models.BooleanField(default=True)
     is_staff          = models.BooleanField(default=False)
     created_at        = models.DateTimeField(auto_now_add=True)
