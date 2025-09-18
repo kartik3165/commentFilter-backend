@@ -6,8 +6,9 @@ from django.contrib.auth import get_user_model
 import requests
 from celery import shared_task, chain
 from moderator_app.models import Post, Comment, ToneSetting
-from moderator_app.utils import extract_summary
+from moderator_app.utils import extract_summary,hash_comment
 from moderator_app.models import ToneType, Tone
+from django.core.cache import cache
 
 User = get_user_model()
 
@@ -165,6 +166,7 @@ def Store_commentTask(self, comment_data):
         text = comment_data.get("text")
         username = comment_data.get("username")
 
+
         try:
             get_post = Post.objects.get(platform_post_id=post_id)
         except Post.DoesNotExist:
@@ -209,12 +211,12 @@ def Store_commentTask(self, comment_data):
         raise self.retry(exc=e)
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=5, queue='meta_comment_info_queue')
-def CommentAnalysisTask(self,comment_id):
+def CommentAnalysisTask(self, comment_id):
     payload = {}
+
     try:
         try:
-            comt = Comment.objects.get(platform_comment_id = comment_id)
-            comt.refresh_from_db()
+            comt = Comment.objects.get(platform_comment_id=comment_id)
         except Comment.DoesNotExist:
             logger.error(f'comment not found for comment ID {comment_id}')
             raise Exception(f'comment not found for comment ID {comment_id}')
@@ -226,87 +228,103 @@ def CommentAnalysisTask(self,comment_id):
             "X-Title": "Instagram Summary Generator"
         }
 
-        if comt.is_reply:
-            payload = {
-                "model": "nvidia/nemotron-nano-9b-v2:free", 
-                "messages": [{
-                    "role": "user",
-                    "content": f'''
-                            Classify this Instagram comment into ONE category:  
-                            1 Flirty, 2 Vulgar, 3 Negative, 4 Normal, 5 Spam, 6 Supportive, 7 Question, 8 Sarcastic, 9 Religious, 10 Harassment, 11 Self-promotion.  
-                            Post Summary: "{comt.post.caption_summary}"  
-                            Comment: "{comt.comment}"  
-                            Answer only with the number.
-                            '''
-                    }],
-                    "stream": False,
-                    "temperature": 0,
-                    "max_tokens": 10
-                }
+        cached = cache.get(f'{comt.post.id}_{hash_comt}') 
+        if cached is not None:
+            comt.detected_tone = cached.get('tone_type')       
+            comt.tone_integer = cached.get('tone_integer')
+            comt.save(update_fields=["detected_tone", "tone_integer"])
+            comt.refresh_from_db()
+
+            logger.warning('get info from cache for this comment ')
         else:
-            try:
-                parent_comt = Comment.objects.get(platform_comment_id = comt.parent_comment_id)
-            except Comment.DoesNotExist:
-                raise Exception(f'parent comment is not found')
-            payload = {
-                "model": "nvidia/nemotron-nano-9b-v2:free", 
-                "messages": [{
-                    "role": "user",
-                    "content": f'''
-                            Classify this Instagram comment into ONE category:  
-                            1 Flirty, 2 Vulgar, 3 Negative, 4 Normal, 5 Spam, 6 Supportive, 7 Question, 8 Sarcastic, 9 Religious, 10 Harassment, 11 Self-promotion.  
-                            Post Summary: "{comt.post.caption_summary}"  
-                            Parent Comment: "{parent_comt.comment}"  
-                            Reply: "{comt.comment}"  
-                            Answer only with the number.
-                            '''
-                            }],
-                    "stream": False,
-                    "temperature": 0,
-                    "max_tokens": 10
-                }
+            hash_comt = hash_comment(comt.comment)
+            logger.warning(f'Comment is hashed {hash_comt}')
+            if comt.is_reply:   # ⚠️ check this logic, might be inverted
+                payload = {
+                    "model": "nvidia/nemotron-nano-9b-v2:free", 
+                    "messages": [{
+                        "role": "user",
+                        "content": f'''
+                                Classify this Instagram comment into ONE category:  
+                                1 Flirty, 2 Vulgar, 3 Negative, 4 Normal, 5 Spam, 6 Supportive, 7 Question, 8 Sarcastic, 9 Religious, 10 Harassment, 11 Self-promotion.  
+                                Post Summary: "{comt.post.caption_summary}"  
+                                Comment: "{comt.comment}"  
+                                Answer only with the number.
+                                '''
+                        }],
+                        "stream": False,
+                        "temperature": 0,
+                        "max_tokens": 10
+                    }
+            else:
+                try:
+                    parent_comt = Comment.objects.get(platform_comment_id=comt.parent_comment_id)
+                except Comment.DoesNotExist:
+                    raise Exception(f'parent comment is not found')
+                payload = {
+                    "model": "nvidia/nemotron-nano-9b-v2:free", 
+                    "messages": [{
+                        "role": "user",
+                        "content": f'''
+                                Classify this Instagram comment into ONE category:  
+                                1 Flirty, 2 Vulgar, 3 Negative, 4 Normal, 5 Spam, 6 Supportive, 7 Question, 8 Sarcastic, 9 Religious, 10 Harassment, 11 Self-promotion.  
+                                Post Summary: "{comt.post.caption_summary}"  
+                                Parent Comment: "{parent_comt.comment}"  
+                                Reply: "{comt.comment}"  
+                                Answer only with the number.
+                                '''
+                                }],
+                        "stream": False,
+                        "temperature": 0,
+                        "max_tokens": 10
+                    }
 
-
-        # logger.info(f' comment analysis for post {comment_id}')
+            logger.info(f' comment analysis for post {comment_id}')
+                
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            response.raise_for_status()
+            data = response.json()
             
-        # response = requests.post(
-        #     "https://openrouter.ai/api/v1/chat/completions",
-        #     headers=headers,
-        #     json=payload,
-        #     timeout=30
-        # )
-        # response.raise_for_status()
-        # data = response.json()
-        
-        # logger.info(f"[generate_summary] OpenRouter API response: {data}")
+            logger.info(f"[generate_summary] OpenRouter API response: {data}")
 
-        # if 'choices' not in data or not data['choices']:
-        #     logger.warning(f"[generate_summary] No choices returned from API")
-        #     raise self.retry(exc=Exception("No response from OpenRouter API"))
-        
-        # content = data['choices'][0]['message']['content']
-        
-        # if not content:
-        #     logger.warning(f"[generate_summary] Empty content returned from API")
-        #     raise self.retry(exc=Exception("Empty response from OpenRouter API"))
-        
-        # result = extract_summary(content)
-        result = 2
-
-        logger.warning('Comment tone finding started ')
-        tone_type = ToneType.objects.filter(serialNo=result).first()
-
-        if not tone_type:
-            logger.error(f"No ToneType found for serialNo={result}")
-            raise Exception(f"No ToneType found for serialNo={result}")
+            if 'choices' not in data or not data['choices']:
+                logger.warning(f"[generate_summary] No choices returned from API")
+                raise self.retry(exc=Exception("No response from OpenRouter API"))
             
-        comt.detected_tone = tone_type.name         
-        comt.tone_integer = result
-    
-        comt.save(update_fields=["detected_tone", "tone_integer"])
-        comt.refresh_from_db()
-        logger.info(f"[generate_summary] comment analysis for {comment_id}: {result}")
-        return comment_id
+            content = data['choices'][0].get('message', {}).get('content') 
+            
+            if not content:
+                logger.warning(f"[generate_summary] Empty content returned from API")
+                raise self.retry(exc=Exception("Empty response from OpenRouter API"))
+            
+            result = extract_summary(content)  
+
+            logger.warning('Comment tone finding started ')
+            tone_type = ToneType.objects.filter(serialNo=result).first()
+
+            if not tone_type:
+                logger.error(f"No ToneType found for serialNo={result}")
+                raise Exception(f"No ToneType found for serialNo={result}")
+                
+            comt.detected_tone = tone_type.name         
+            comt.tone_integer = result
+            value = {'tone_type': tone_type.name, 'tone_integer': result}   
+            cache.set(
+                f'{comt.post.id}_{hash_comt}',
+                value,
+                timeout=60 * 60 * 24
+            )
+            logger.warning(f'hash comment is stored key= {comt.post.id}_{hash_comt} , value = {value}') 
+
+            comt.save(update_fields=["detected_tone", "tone_integer"])
+            comt.refresh_from_db()
+            logger.info(f"[generate_summary] comment analysis for {comment_id}: {result}")
+            return comment_id
     
     except requests.RequestException as e:
         logger.error(f"[comment analysis] OpenRouter API Request Error: {e}")
@@ -354,7 +372,7 @@ def getCommentDecisionChain(comment_data):
     workflow = chain(
         Store_commentTask.s(comment_data), # type: ignore
         CommentAnalysisTask.s(), # type: ignore
-        DeleteCommentdTask.s() # # type: ignore
+        # DeleteCommentdTask.s() # # type: ignore
     )
 
     workflow.apply_async()
