@@ -1,12 +1,7 @@
 from datetime import timedelta
 from django.utils import timezone
-from typing import Iterable
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.db import models
-
-
-
-
 
 class UserManager(BaseUserManager):
     def create_user(self, mobile, name, role, **extra_fields):
@@ -62,3 +57,10 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return f"{self.name} ({self.mobile})"
+
+class DailyUsage(models.Model):
+    user_id = models.ForeignKey(User, on_delete=models.CASCADE)
+    usage_date = models.DateField(default=timezone.now)
+    comment_used = models.PositiveBigIntegerField()
+    photo_summaries_used = models.PositiveBigIntegerField()
+    video_summaries_used = models.PositiveBigIntegerField()

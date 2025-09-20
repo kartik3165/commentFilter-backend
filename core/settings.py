@@ -2,7 +2,8 @@ import os
 import json
 from pathlib import Path
 from datetime import timedelta
-from decouple import config, Csv
+from decouple import config
+
 
 # --------------------------
 # Base Directory
@@ -14,15 +15,28 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # --------------------------
 SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='127.0.0.1,localhost', cast=Csv())
+ALLOWED_HOSTS = config(
+    'ALLOWED_HOSTS', 
+    default='127.0.0.1,localhost', 
+    cast=lambda v: [s.strip() for s in v.split(',')]
+)
 
 # --------------------------
 # CORS & CSRF
 # --------------------------
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', cast=Csv())
-CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', cast=Csv())
+CORS_ALLOWED_ORIGINS = config(
+    'CORS_ALLOWED_ORIGINS', 
+    default='', 
+    cast=lambda v: [s.strip() for s in v.split(',')] if v else []
+)
+
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS', 
+    default='', 
+    cast=lambda v: [s.strip() for s in v.split(',')] if v else []
+)
 
 SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=False, cast=bool)
 CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=False, cast=bool)
@@ -39,7 +53,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-
+    
     # Third-party
     'rest_framework',
     'rest_framework_simplejwt.token_blacklist',
@@ -51,7 +65,8 @@ INSTALLED_APPS = [
     'auth_app',
     'social_app',
     'admin_app',
-    'moderator_app'
+    'moderator_app',
+    'subscription_app'
 ]
 
 # --------------------------
