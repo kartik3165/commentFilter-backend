@@ -6,7 +6,7 @@ from django.utils import timezone
 class Plan(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     price = models.PositiveIntegerField(null=True, blank=True)
-    message_limit = models.PositiveIntegerField(null=True, blank=True)
+    comment_limit = models.PositiveIntegerField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

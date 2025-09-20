@@ -3,6 +3,8 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import UserCreationForm, UserChangeForm
 from django.contrib.auth import get_user_model
 
+from auth_app.models import DailyUsage
+
 User = get_user_model()
 
 class CustomUserCreationForm(UserCreationForm):
@@ -77,3 +79,19 @@ class UserAdmin(BaseUserAdmin):
 admin.site.site_header = "Your App Administration"
 admin.site.site_title = "Your App Admin"
 admin.site.index_title = "Welcome to Your App Administration"
+
+
+@admin.register(DailyUsage)
+class DailyUsageAdmin(admin.ModelAdmin):
+    list_display = (
+        "id", 
+        "user_id", 
+        "usage_date", 
+        "comment_used", 
+        "photo_summaries_used", 
+        "video_summaries_used"
+    )
+    list_display_links = ("id",)
+    search_fields = ("user_id__mobile", "user_id__name")
+    list_filter = ("usage_date", "user_id")
+    ordering = ("-usage_date",)

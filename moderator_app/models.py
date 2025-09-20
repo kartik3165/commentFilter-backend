@@ -6,7 +6,6 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
-
 class ToneType(models.Model):
     serialNo = models.IntegerField(max_length=5, null=True, default=True)
     name = models.CharField(max_length=200) # vulgar, Flirty, Negative, spam
@@ -33,7 +32,6 @@ class ToneSetting(models.Model):
     def __str__(self):
         return self.tone.name
 
-
 class Post(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user_id = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True)
@@ -46,8 +44,6 @@ class Post(models.Model):
     custom_tone = models.ForeignKey('moderator_app.Tone', on_delete=models.SET_NULL, null=True, blank=True, related_name='custom_for_posts')
     first_seen_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(default=timezone.now)
-
-
 
 class Comment(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

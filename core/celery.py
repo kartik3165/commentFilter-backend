@@ -17,9 +17,11 @@ app.conf.task_queues = (
     Queue("llm_comment_summary_queue"),
     Queue("delete_comment_queue"),
     Queue("db_content_store_queue"),
+    Queue("daily_usage_queue"),
+
 )
 
-app.conf.task_default_queue = 'webhook_post_queue'
+# app.conf.task_default_queue = 'webhook_post_queue'
 
 app.conf.update(
     task_acks_late = True,

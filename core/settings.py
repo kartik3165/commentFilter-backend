@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from datetime import timedelta
 from decouple import config
-
+from celery.schedules import crontab
 
 # --------------------------
 # Base Directory
@@ -219,6 +219,8 @@ CACHES = {
     }
 }
 
+REDIS_URL = config('REDIS_URL', default='')
+
 # --------------------------
 # Twilio
 # --------------------------
@@ -255,12 +257,21 @@ META_VERIFICATION_TOKEN='12345'
 # --------------------------
 # Celery details
 # --------------------------
-CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='')
-CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='django-db')
+CELERY_BROKER_URL = config('CELERY_BROKER_URL',default='redis://localhost:6379/1')
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND')
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TASK_ACKS_LATE = True
+
+
+CELERY_BEAT_SCHEDULE = {
+    "flush_daily_comment_usage_every_3_hours": {
+        "task": "subscription_app.tasks.flush_daily_comment_usage",
+        "schedule": crontab(minute=0, hour=0),  # every mid night
+        "options": {"queue": "daily_usage_queue"},   # optional, specify queue
+    },
+}
 
 # --------------------------
 # Open router details

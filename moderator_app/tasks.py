@@ -9,6 +9,9 @@ from moderator_app.models import Post, Comment, ToneSetting
 from moderator_app.utils import extract_summary,hash_comment
 from moderator_app.models import ToneType, Tone
 from django.core.cache import cache
+import redis
+
+
 
 User = get_user_model()
 
@@ -213,10 +216,10 @@ def Store_commentTask(self, comment_data):
 @shared_task(bind=True, max_retries=3, default_retry_delay=5, queue='meta_comment_info_queue')
 def CommentAnalysisTask(self, comment_id):
     payload = {}
-
     try:
         try:
             comt = Comment.objects.get(platform_comment_id=comment_id)
+            hash_comt = hash_comment(comt.comment)
         except Comment.DoesNotExist:
             logger.error(f'comment not found for comment ID {comment_id}')
             raise Exception(f'comment not found for comment ID {comment_id}')
@@ -228,7 +231,8 @@ def CommentAnalysisTask(self, comment_id):
             "X-Title": "Instagram Summary Generator"
         }
 
-        cached = cache.get(f'{comt.post.id}_{hash_comt}') 
+        cached = cache.get(f'{comt.post.id}_{hash_comt}')
+        
         if cached is not None:
             comt.detected_tone = cached.get('tone_type')       
             comt.tone_integer = cached.get('tone_integer')
@@ -237,7 +241,6 @@ def CommentAnalysisTask(self, comment_id):
 
             logger.warning('get info from cache for this comment ')
         else:
-            hash_comt = hash_comment(comt.comment)
             logger.warning(f'Comment is hashed {hash_comt}')
             if comt.is_reply:   # ⚠️ check this logic, might be inverted
                 payload = {
@@ -325,7 +328,7 @@ def CommentAnalysisTask(self, comment_id):
             comt.refresh_from_db()
             logger.info(f"[generate_summary] comment analysis for {comment_id}: {result}")
             return comment_id
-    
+
     except requests.RequestException as e:
         logger.error(f"[comment analysis] OpenRouter API Request Error: {e}")
         if hasattr(e, 'response') and e.response is not None:
