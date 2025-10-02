@@ -1,82 +1,66 @@
-from django.contrib.auth.models import AbstractUser
-from django.db import models
+from datetime import timedelta
 from django.utils import timezone
+from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
+from django.db import models
 
-class User(AbstractUser):
-    email = models.EmailField(unique=True)
-    phone_number = models.CharField(max_length=15, blank=True, null=True)
-    is_phone_verified = models.BooleanField(default=False)
+class UserManager(BaseUserManager):
+    def create_user(self, mobile, name, role, **extra_fields):
+        if not mobile: raise ValueError('Mobile number required')
+        user = self.model(mobile=mobile, name=name, role=role, **extra_fields)
+        user.set_unusable_password() 
+        user.save()
+        return user
+
+    def create_superuser(self, mobile, name, password=None, **extra_fields):
+        if not password:
+            raise ValueError('Superuser must have a password')
+        user = self.create_user(mobile, name, role='root_admin', **extra_fields)
+        user.set_password(password)  # Set actual password instead of unusable
+        user.is_superuser = True
+        user.is_staff = True
+        user.save()
+        return user
+
+class User(AbstractBaseUser, PermissionsMixin):
+    ROLE_CHOICES = [
+        ('root_admin','Root Admin'),
+        ('manager','Manager'),
+        ('user','User'),
+    ]
+    mobile            = models.CharField(max_length=15, unique=True)
+    name              = models.CharField(max_length=100,null=True, blank=True, default='empty')
+    email             = models.EmailField(null=True, blank=True)
     is_email_verified = models.BooleanField(default=False)
-    failed_login_attempts = models.IntegerField(default=0)
-    account_locked_until = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    role              = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    plan_type         = models.CharField(max_length=100, blank=True)
+    trial_start       = models.DateTimeField(null=True, blank=True)
+    trial_end         = models.DateTimeField(null=True, blank=True)
+    default_tone      = models.ForeignKey('moderator_app.Tone', on_delete=models.SET_NULL, null=True, blank=True, related_name='default_for_users')
+    is_active         = models.BooleanField(default=True)
+    is_staff          = models.BooleanField(default=False)
+    created_at        = models.DateTimeField(auto_now_add=True)
+    updated_at        = models.DateTimeField(auto_now=True)
 
-    USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['username']
+    USERNAME_FIELD = 'mobile'
+    REQUIRED_FIELDS = ['name']
 
-    def is_account_locked(self):
-        if self.account_locked_until:
-            return timezone.now() < self.account_locked_until
+    objects = UserManager()
+
+    def start_trial(self):
+        if not self.trial_start:
+            now = timezone.now()
+            self.trial_start = now
+            self.trial_end   = now + timedelta(days=14)
+            self.save(update_fields=['trial_start', 'trial_end'])
+            return True
         return False
 
-    def lock_account(self, minutes=30):
-        self.account_locked_until = timezone.now() + timezone.timedelta(minutes=minutes)
-        self.save()
-
-    def unlock_account(self):
-        self.failed_login_attempts = 0
-        self.account_locked_until = None
-        self.save()
-
-class AuthAuditLog(models.Model):
-    EVENT_CHOICES = [
-        ('login_success', 'Login Success'),
-        ('login_failed', 'Login Failed'),
-        ('logout', 'Logout'),
-        ('signup', 'Signup'),
-        ('password_reset', 'Password Reset'),
-        ('account_locked', 'Account Locked'),
-        ('otp_verified', 'OTP Verified'),
-        ('otp_failed', 'OTP Failed'),
-    ]
-
-    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
-    event = models.CharField(max_length=20, choices=EVENT_CHOICES)
-    ip_address = models.GenericIPAddressField()
-    user_agent = models.TextField()
-    timestamp = models.DateTimeField(auto_now_add=True)
-    details = models.JSONField(default=dict, blank=True)
-
-    class Meta:
-        ordering = ['-timestamp']
-
-# models.py - Update your OTPVerification model
-class OTPVerification(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
-    phone_number = models.CharField(max_length=15)
-    firebase_uid = models.CharField(max_length=128, blank=True, null=True)
-    is_verified = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    verified_at = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        # Allow multiple unverified OTPs for the same phone number
-        constraints = [
-            models.UniqueConstraint(
-                fields=['phone_number'], 
-                condition=models.Q(is_verified=False),
-                name='unique_unverified_phone'
-            )
-        ]
-
     def __str__(self):
-        return f"OTP for {self.phone_number} (verified={self.is_verified})"
-class UserRefreshToken(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    token = models.CharField(max_length=255, unique=True)
-    device_info = models.CharField(max_length=255, blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+        return f"{self.name} ({self.mobile})"
 
-    def __str__(self):
-        return f"{self.user.email} - {self.device_info or 'Unknown device'}"
+class DailyUsage(models.Model):
+    user_id = models.ForeignKey(User, on_delete=models.CASCADE)
+    usage_date = models.DateField(default=timezone.now)
+    comment_used = models.PositiveBigIntegerField()
+    photo_summaries_used = models.PositiveBigIntegerField()
+    video_summaries_used = models.PositiveBigIntegerField()

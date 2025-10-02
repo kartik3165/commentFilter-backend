@@ -1,24 +1,30 @@
-from .models import AuthAuditLog
-from django.core.validators import RegexValidator
+# utils.py
+import random
+import hashlib
+from django.core.cache import cache
+from django.conf import settings
+from twilio.rest import Client
 
-def create_audit_log(user, event, ip_address, user_agent, details=None):
-    AuthAuditLog.objects.create(
-        user=user,
-        event=event,
-        ip_address=ip_address,
-        user_agent=user_agent,
-        details=details or {}
+OTP_TTL = 300 
+
+def _hash_otp(mobile, otp):
+    return hashlib.sha256(f"{mobile}:{otp}".encode()).hexdigest()
+
+def send_otp(mobile):
+    otp = str(random.randint(100000, 999999))
+    hashed = _hash_otp(mobile, otp)
+    cache.set(f"otp:{mobile}", hashed, OTP_TTL)
+    client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+    message = client.messages.create(
+        body=f"Your OTP is {otp}",
+        from_=settings.TWILIO_FROM_NUMBER,
+        to=mobile
     )
+    return True
 
-def get_client_ip(request):
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        ip = x_forwarded_for.split(',')[0]
-    else:
-        ip = request.META.get('REMOTE_ADDR')
-    return ip
+def verify_otp(mobile, otp):
+    hashed = cache.get(f"otp:{mobile}")
+    if not hashed:
+        return False
+    return hashed == _hash_otp(mobile, otp)
 
-phone_validator = RegexValidator(
-    regex=r'^\+[1-9]\d{1,14}$',
-    message='Enter a valid phone number in E.164 format (e.g., +1234567890)'
-)

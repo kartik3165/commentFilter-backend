@@ -1,231 +1,66 @@
 from rest_framework import serializers
-from django.contrib.auth import authenticate
-from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError, ImproperlyConfigured
-from django.conf import settings
-from .models import User, OTPVerification
-import requests
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.contrib.auth import get_user_model
+from django.core.validators import RegexValidator
 
-def verify_recaptcha_v3(token: str, *, expected_action: str, request=None) -> None:
-    from django.conf import settings
-    from rest_framework import serializers
+User = get_user_model()
 
-    secret_key = getattr(settings, "RECAPTCHA_SECRET_KEY", None)
-    if not secret_key:
-        raise ImproperlyConfigured("RECAPTCHA_SECRET_KEY is not configured")
+class SendOTPSerializer(serializers.Serializer):
+    mobile = serializers.CharField(max_length=15)
+    
+    def validate_mobile(self, value):
+        if not value.startswith('+'):
+            raise serializers.ValidationError("Mobile number must include country code (e.g., +91834567890)")
+        return value
 
-    # ✅ Google test secret key (always succeeds, no score/action/hostname)
-    TEST_SECRET_KEY = "6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe"
-    if secret_key == TEST_SECRET_KEY:
-        # Skip real verification in test mode
-        return
+class VerifyOTPSerializer(serializers.Serializer):
+    mobile = serializers.CharField(max_length=15)
+    otp = serializers.CharField(max_length=6, min_length=6)
+    
+    def validate_mobile(self, value):
+        if not value.startswith('+'):
+            raise serializers.ValidationError("Mobile number must include country code")
+        return value
 
-    # ✅ Allow bypass in DEBUG mode too
-    if getattr(settings, "DEBUG", False):
-        return
+class ProfileInfoSerializer(serializers.Serializer):
+    name = serializers.CharField(
+        required=True,
+        min_length=2,
+        max_length=50,
+        validators=[
+            RegexValidator(
+                regex=r'^[A-Za-z ]+$',
+                message="Name can only contain letters and spaces"
+            )
+        ]
+    )
 
-    # Normal production flow
-    min_score = getattr(settings, "RECAPTCHA_MIN_SCORE", 0.5)
-    enforce_hostname = getattr(settings, "RECAPTCHA_ENFORCE_HOSTNAME", False)
-
-    # Send user's IP to Google for better risk analysis
-    remoteip = None
-    if request is not None:
-        xff = request.META.get("HTTP_X_FORWARDED_FOR")
-        remoteip = (xff.split(",")[0].strip() if xff else request.META.get("REMOTE_ADDR"))
-
-    data = {
-        "secret": secret_key,
-        "response": token,
-    }
-    if remoteip:
-        data["remoteip"] = remoteip
-
-    try:
-        import requests
-        r = requests.post("https://www.google.com/recaptcha/api/siteverify", data=data, timeout=5)
-        result = r.json()
-    except Exception:
-        raise serializers.ValidationError({"recaptcha_token": "reCAPTCHA verification service unavailable"})
-
-    # Must be successful
-    if not result.get("success", False):
-        raise serializers.ValidationError({"recaptcha_token": "reCAPTCHA verification failed"})
-
-    # v3-specific checks
-    score = result.get("score", 0.0)
-    action = result.get("action", "")
-    hostname = result.get("hostname", "")
-
-    if action != expected_action:
-        raise serializers.ValidationError({"recaptcha_token": "Invalid reCAPTCHA action"})
-    if score < float(min_score):
-        raise serializers.ValidationError({"recaptcha_token": f"Low reCAPTCHA score ({score})"})
-    if enforce_hostname:
-        if request is not None:
-            req_host = request.get_host().split(":")[0]
-            if hostname != req_host:
-                raise serializers.ValidationError({"recaptcha_token": "Hostname mismatch"})
-
-
-class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, validators=[validate_password])
-    password_confirm = serializers.CharField(write_only=True)
-    recaptcha_token = serializers.CharField(write_only=True)
+    email = serializers.EmailField(
+        required=True,
+        max_length=100
+    )
 
     class Meta:
         model = User
-        fields = ("email", "username", "password", "password_confirm", "recaptcha_token")
+        fields = ['name', 'email']
 
-    def validate(self, attrs):
-        # Password match first
-        if attrs.get("password") != attrs.get("password_confirm"):
-            raise serializers.ValidationError({"password_confirm": "Passwords do not match"})
-
-        # Enforce reCAPTCHA v3 (action = "register")
-        token = attrs.get("recaptcha_token")
-        if not token:
-            raise serializers.ValidationError({"recaptcha_token": "This field is required"})
-        verify_recaptcha_v3(token, expected_action="register", request=self.context.get("request"))
-
-        # Cleanup write_only fields
-        attrs.pop("password_confirm", None)
-        attrs.pop("recaptcha_token", None)
-        return attrs
-
-    def create(self, validated_data):
-        user = User.objects.create_user(**validated_data)
-        # Create OTP verification record
-        OTPVerification.objects.create(user=user, phone_number=None)
-        return user
-
-
-class LoginSerializer(serializers.Serializer):
-    email = serializers.EmailField()
-    password = serializers.CharField(write_only=True)
-    recaptcha_token = serializers.CharField(write_only=True)  # <-- mandatory now
-
-    def validate(self, attrs):
-        email = attrs.get("email")
-        password = attrs.get("password")
-        token = attrs.get("recaptcha_token")
-
-        if not token:
-            raise serializers.ValidationError({"recaptcha_token": "This field is required"})
-
-        # Enforce reCAPTCHA v3 (action = "login") BEFORE auth to slow bots
-        verify_recaptcha_v3(token, expected_action="login", request=self.context.get("request"))
-
-        if not (email and password):
-            raise serializers.ValidationError("Must provide email and password")
-
-        user = authenticate(username=email, password=password)
-        if not user:
-            raise serializers.ValidationError("Invalid credentials")
-
-        if hasattr(user, "is_account_locked") and user.is_account_locked():
-            raise serializers.ValidationError("Account is temporarily locked")
-
-        attrs["user"] = user
-        return attrs
-
-# Add these to your existing serializers.py
-
-class SendOTPSerializer(serializers.Serializer):
-    """
-    Serializer for sending OTP requests
-    """
-    phone_number = serializers.CharField(required=True, max_length=15)
-    user_id = serializers.IntegerField(required=False, allow_null=True)
-    recaptcha_token = serializers.CharField(required=True, write_only=True)
-    
-    def validate_phone_number(self, value):
-        """Validate phone number format (E.164)"""
-        import re
-        phone_pattern = r'^\+[1-9]\d{1,14}$'
-        if not re.match(phone_pattern, value):
-            raise serializers.ValidationError(
-                'Enter a valid phone number in E.164 format (e.g., +1234567890)'
-            )
+    def validate_email(self, value):
+        user = self.context['request'].user
+        if User.objects.filter(email=value).exclude(id=user.id).exists():
+            raise serializers.ValidationError("This email is already registered.")
         return value
     
-    def validate_recaptcha_token(self, value):
-        """Validate reCAPTCHA token"""
-        if not value:
-            raise serializers.ValidationError("This field is required")
-        # Use your existing verify_recaptcha_v3 function
-        verify_recaptcha_v3(value, expected_action="send_otp", request=self.context.get("request"))
-        return value
-    
-    def validate_user_id(self, value):
-        """Validate user exists if provided"""
-        if value is not None:
-            try:
-                User.objects.get(id=value)
-            except User.DoesNotExist:
-                raise serializers.ValidationError("Invalid user ID")
-        return value
-    
-    def validate(self, attrs):
-        """Additional cross-field validation"""
-        phone_number = attrs.get('phone_number')
-        user_id = attrs.get('user_id')
-        
-        # If user_id provided, verify phone number matches user's existing phone (if any)
-        if user_id:
-            try:
-                user = User.objects.get(id=user_id)
-                # Check if user already has a different verified phone number
-                if user.is_phone_verified and user.phone_number and user.phone_number != phone_number:
-                    raise serializers.ValidationError({
-                        'phone_number': 'This phone number does not match your verified phone number'
-                    })
-            except User.DoesNotExist:
-                raise serializers.ValidationError({
-                    'user_id': 'Invalid user ID'
-                })
-        
-        return attrs
-
-
-class VerifyOTPSerializer(serializers.Serializer):
-    session_id = serializers.CharField(required=True)
-    otp_code = serializers.CharField(required=True, max_length=6)
-    
-    def validate_otp_code(self, value):
-        if not value.isdigit():
-            raise serializers.ValidationError("OTP must be numeric")
-        if len(value) != 6:
-            raise serializers.ValidationError("OTP must be 6 digits")
-        return value
-
-
-
-# Update your existing OTPVerificationSerializer to inherit from the new one
-class OTPVerificationSerializer(VerifyOTPSerializer):
-    pass
-
-
-
-
+    def update(self, instance, validated_data):
+        instance.name = validated_data.get('name', instance.name)
+        instance.email = validated_data.get('email', instance.email)
+        instance.save()
+        return instance
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ("id", "username", "email", "phone_number", "is_phone_verified", "is_email_verified")
-        read_only_fields = ("id", "is_phone_verified", "is_email_verified")
+        fields = ['id','mobile','name','role', 'email']
 
-
-class PasswordResetSerializer(serializers.Serializer):
-    email = serializers.EmailField()
-
-class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    @classmethod
-    def get_token(cls, user):
-        token = super().get_token(user)
-        token['is_phone_verified'] = user.is_phone_verified
-        token['roles'] = list(user.groups.values_list('name', flat=True))
-        token['is_staff'] = user.is_staff
-        token['is_superuser'] = user.is_superuser
-        return token
+class TrialSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['trial_start', 'trial_end']

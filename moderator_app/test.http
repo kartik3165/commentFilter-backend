@@ -1,0 +1,136 @@
+
+### Test webhook verification (GET)
+GET http://127.0.0.1:8001/api/moderator/webhook/meta/?hub.verify_token=12345&hub.challenge=12345
+
+### webhook for images and reels notification (POST)
+POST http://127.0.0.1:8001/api/moderator/post-webhook/meta/
+Content-Type: application/json
+[
+  {
+    "object": "user",
+    "object_id": "17841400000000000",
+    "changed_aspect": "media",
+    "time": 1694354672,
+    "data": {
+        "media_id": "Kartik31455655"
+    },
+    "subscription_id": 1234567890
+}
+]
+
+
+### webhook for comment
+POST http://127.0.0.1:8001/api/moderator/comment-webhook/meta/
+Content-Type: application/json
+
+{
+  "object": "instagram",
+  "entry": [
+    {
+      "id": "17841400000000000",
+      "time": 1662291832,
+      "changes": [
+        {
+          "field": "comments",
+          "value": {
+            "id": "17895700000000001",
+            "text": "you are looking hot in that dress",
+            "username": "user1",
+            "media": {
+              "id": "17900000000000"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+
+# "text": "you are looking hot in that dress! 👍",
+
+
+### webhook for Sub comment
+POST http://127.0.0.1:8001/api/moderator/comment-webhook/meta/
+Content-Type: application/json
+
+{
+  "object": "instagram",
+  "entry": [
+    {
+      "id": "17841400000000000",
+      "time": 1662291832,
+      "changes": [
+        {
+          "field": "comments",
+          "value": {
+            "id": "1789570001",
+            "parent_id": "17895700000000001",
+            "text": "really bro she looking hot, i want to see her naked",
+            "username": "user1",
+            "media": {
+              "id": "17900000000000000"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+
+
+### webhook for Sub comment 2
+POST http://127.0.0.1:8001/api/moderator/comment-webhook/meta/
+Content-Type: application/json
+
+{
+  "object": "instagram",
+  "entry": [
+    {
+      "id": "17841400000000000",
+      "time": 1662291832,
+      "changes": [
+        {
+          "field": "comments",
+          "value": {
+            "id": "1789570316501",
+            "parent_id": "17895700000000001",
+            "text": "really bro he is looking chad",
+            "username": "user1",
+            "media": {
+              "id": "17900000000000000"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+
+### webhook for Sub comment for caching
+POST http://127.0.0.1:8001/api/moderator/comment-webhook/meta/
+Content-Type: application/json
+
+{
+  "object": "instagram",
+  "entry": [
+    {
+      "id": "17841400000000000",
+      "time": 1662291832,
+      "changes": [
+        {
+          "field": "comments",
+          "value": {
+            "id": "1789570003165",
+            "parent_id": "17895700000000001",
+            "text": "really bro she looking hot, i want to see her naked",
+            "username": "user1",
+            "media": {
+              "id": "17900000000000000"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+

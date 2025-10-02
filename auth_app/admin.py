@@ -1,81 +1,97 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, AuthAuditLog, OTPVerification, UserRefreshToken
+from django.contrib.auth.forms import UserCreationForm, UserChangeForm
+from django.contrib.auth import get_user_model
+
+from auth_app.models import DailyUsage
+
+User = get_user_model()
+
+class CustomUserCreationForm(UserCreationForm):
+    class Meta:
+        model = User
+        fields = ('mobile', 'name', 'role')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Make password fields optional for regular users, required for superusers
+        self.fields['password1'].required = False
+        self.fields['password2'].required = False
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        # If no password provided, set unusable password (for passwordless login)
+        if not self.cleaned_data.get('password1'):
+            user.set_unusable_password()
+        else:
+            user.set_password(self.cleaned_data["password1"])
+        if commit:
+            user.save()
+        return user
+
+class CustomUserChangeForm(UserChangeForm):
+    class Meta:
+        model = User
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Remove password requirement from change form
+        if 'password' in self.fields:
+            self.fields['password'].help_text = (
+                "Raw passwords are not stored, so there is no way to see this "
+                "user's password, but you can change the password using "
+                "<a href=\"../password/\">this form</a>."
+            )
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    list_display = ('email', 'username', 'phone_number', 'is_email_verified', 
-                   'is_phone_verified', 'is_account_locked', 'failed_login_attempts', 
-                   'created_at', 'is_staff', 'is_active')
-    list_filter = ('is_staff', 'is_active', 'is_email_verified', 'is_phone_verified', 
-                  'created_at', 'updated_at')
-    search_fields = ('email', 'username', 'phone_number')
-    ordering = ('-created_at',)
-    readonly_fields = ('created_at', 'updated_at')
+    add_form = CustomUserCreationForm
+    form = CustomUserChangeForm
     
+    list_display = ('mobile', 'name', 'role','is_staff', 'is_active', 'created_at')
+    list_filter = ('role', 'is_staff', 'is_active', 'plan_type')
     fieldsets = (
-        (None, {'fields': ('email', 'username', 'password')}),
-        ('Personal Info', {'fields': ('first_name', 'last_name', 'phone_number')}),
-        ('Verification', {
-            'fields': ('is_email_verified', 'is_phone_verified')
-        }),
-        ('Security', {
-            'fields': ('failed_login_attempts', 'account_locked_until')
-        }),
-        ('Permissions', {
-            'fields': ('is_active', 'is_staff', 'is_superuser', 
-                      'groups', 'user_permissions')
-        }),
-        ('Important dates', {
-            'fields': ('last_login', 'created_at', 'updated_at')
-        }),
+        (None, {'fields': ('mobile', 'name', 'password')}),
+        ('Personal Info', {'fields': ('plan_type', 'email','default_tone')}),
+        ('Permissions', {'fields': ('role', 'is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
+        ('Important dates', {'fields': ('last_login', 'created_at', 'updated_at')}),
     )
     
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('email', 'username', 'password1', 'password2')}
+            'fields': ('mobile', 'name', 'role', 'plan_type', 'password1', 'password2', 'is_active', 'is_staff', 'default_tone')}
         ),
     )
     
-    def is_account_locked(self, obj):
-        return obj.is_account_locked()
-    is_account_locked.boolean = True
-    is_account_locked.short_description = 'Locked'
-
-@admin.register(AuthAuditLog)
-class AuthAuditLogAdmin(admin.ModelAdmin):
-    list_display = ('user', 'event', 'ip_address', 'timestamp', 'short_user_agent')
-    list_filter = ('event', 'timestamp')
-    search_fields = ('user__email', 'user__username', 'ip_address')
-    readonly_fields = ('timestamp',)
-    date_hierarchy = 'timestamp'
+    search_fields = ('mobile', 'name', 'plan_type')
+    ordering = ('mobile',)
+    readonly_fields = ('created_at', 'updated_at', 'last_login')
     
-    def short_user_agent(self, obj):
-        return obj.user_agent[:50] + '...' if len(obj.user_agent) > 50 else obj.user_agent
-    short_user_agent.short_description = 'User Agent' # type: ignore
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        if obj and obj.has_usable_password() == False:
+            if 'password' in form.base_fields:
+                form.base_fields['password'].widget = form.base_fields['password'].hidden_widget()
+        return form
 
-class OTPVerificationAdmin(admin.ModelAdmin):
-    list_display = ('user', 'phone_number', 'firebase_uid', 'is_verified', 'created_at', 'verified_at')
-    list_filter = ('is_verified', 'created_at', 'verified_at')
-    search_fields = ('user__email', 'user__username', 'phone_number', 'firebase_uid')
-    readonly_fields = ('created_at',)
-    
-    def get_queryset(self, request):
-        queryset = super().get_queryset(request)
-        return queryset.select_related('user')
-
-admin.site.register(OTPVerification, OTPVerificationAdmin)
+admin.site.site_header = "Your App Administration"
+admin.site.site_title = "Your App Admin"
+admin.site.index_title = "Welcome to Your App Administration"
 
 
-@admin.register(UserRefreshToken)
-class UserRefreshTokenAdmin(admin.ModelAdmin):
-    list_display = ('id', 'user', 'device_info', 'created_at', 'token_short')
-    list_filter = ('created_at', 'device_info', 'user')
-    search_fields = ('user__email', 'device_info', 'token')
-    ordering = ('-created_at',)
-
-    def token_short(self, obj):
-        # Show only first 20 chars of token for readability
-        return obj.token[:20] + "..."
-    token_short.short_description = "Refresh Token"
+@admin.register(DailyUsage)
+class DailyUsageAdmin(admin.ModelAdmin):
+    list_display = (
+        "id", 
+        "user_id", 
+        "usage_date", 
+        "comment_used", 
+        "photo_summaries_used", 
+        "video_summaries_used"
+    )
+    list_display_links = ("id",)
+    search_fields = ("user_id__mobile", "user_id__name")
+    list_filter = ("usage_date", "user_id")
+    ordering = ("-usage_date",)
