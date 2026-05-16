@@ -215,3 +215,12 @@ htmlcov/
 # Package manager
 poetry.lock
 requirements.txt  # Only if you're not tracking it
+# Added by code-review-graph
+.code-review-graph/
+
+CLAUDE.md 
+skills-lock.json
+.claude/
+.agents/
+.claudeignore
+*.json

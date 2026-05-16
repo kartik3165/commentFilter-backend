@@ -24,12 +24,12 @@ ALLOWED_HOSTS = config(
 # --------------------------
 # CORS & CSRF
 # --------------------------
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = config(
-    'CORS_ALLOWED_ORIGINS', 
-    default='', 
-    cast=lambda v: [s.strip() for s in v.split(',')] if v else []
+    'CORS_ALLOWED_ORIGINS',
+    default='',
+    cast=lambda v: [s.strip() for s in v.split(',') if s.strip()] if v else []
 )
 
 CSRF_TRUSTED_ORIGINS = config(
@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_ratelimit',
     'django_celery_results',
+    'drf_yasg',
 
     # Custom apps
     'auth_app',
@@ -77,7 +78,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    # 'django.middleware.csrf.CsrfViewMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -248,10 +249,10 @@ RECAPTCHA_SECRET_KEY = config('RECAPTCHA_SECRET_KEY', default='')
 # --------------------------
 # Meta details
 # --------------------------
-META_APP_ID=''
-META_APP_SECRET=''
-META_REDIRECT_URL=''
-META_VERIFICATION_TOKEN='12345'
+META_APP_ID = config('META_APP_ID', default='')
+META_APP_SECRET = config('META_APP_SECRET', default='')
+META_REDIRECT_URL = config('META_REDIRECT_URL', default='')
+META_VERIFICATION_TOKEN = config('META_VERIFICATION_TOKEN', default='')
 
 
 # --------------------------
@@ -277,7 +278,15 @@ CELERY_BEAT_SCHEDULE = {
 # Open router details
 # --------------------------
 OPENROUTER_API_KEY = config('OPENROUTER_API_KEY', default='')
-SITE_URL = 'http://localhost:8001'
+OPENROUTER_PRIMARY_MODEL = config('OPENROUTER_PRIMARY_MODEL', default='meta-llama/llama-3.1-8b-instruct')
+OPENROUTER_FALLBACK_MODEL = config('OPENROUTER_FALLBACK_MODEL', default='nvidia/nemotron-nano-9b-v2:free')
+SITE_URL = config('SITE_URL', default='http://localhost:8001')
+
+# --------------------------
+# Internal services
+# --------------------------
+INTERNAL_POST_API_URL = config('INTERNAL_POST_API_URL', default='http://127.0.0.1:8002/api/post/')
+
 #Temp
 
 Token = 'token'
